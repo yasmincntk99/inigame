@@ -34,6 +34,8 @@ button.h span{font-size:12px;opacity:.75}
 button.h.ult{border-color:var(--ult)}
 button.h.sel{border-color:var(--gold);background:#3a3a1f}
 button.h:disabled{opacity:.4;cursor:default}
+#maps button.h{width:180px;min-width:0}
+#maps canvas{display:block;margin:0 auto 8px;border-radius:6px}
 .hide{display:none}
 </style>
 </head>
@@ -47,6 +49,9 @@ button.h:disabled{opacity:.4;cursor:default}
 <div class="ov" id="start">
   <h1>Tiga Jalur</h1>
   <p>Pilih hero dasar, lalu susun sendiri skill-mu (gaya Legends of Dota). Ketuk tanah untuk berjalan, ketuk musuh untuk menyerang, tombol Q W E R untuk skill. Hancurkan markas merah.</p>
+  <p>Peta</p>
+  <div class="row" id="maps"></div>
+  <p>Hero</p>
   <div class="row" id="picks"></div>
 </div>
 <div class="ov hide" id="draft">
@@ -66,18 +71,38 @@ button.h:disabled{opacity:.4;cursor:default}
 
 <script>
 "use strict";
-const W=2400,H=2400,$=id=>document.getElementById(id);
+let W=2400,H=2400;const $=id=>document.getElementById(id);
 const cv=$('c'),ctx=cv.getContext('2d'),mini=$('mini'),mc=mini.getContext('2d');
 let vw,vh,dpr;
 function resize(){dpr=Math.min(devicePixelRatio||1,2);vw=innerWidth;vh=innerHeight;cv.width=vw*dpr;cv.height=vh*dpr}
 addEventListener('resize',resize);resize();
 
-/* ---- Peta: tiga jalur dari markas Terang (kiri bawah) ke markas Gelap (kanan atas) ---- */
-const BA={x:250,y:2150},BB={x:2150,y:250};
-const LANES=[
- [BA,{x:250,y:1200},{x:250,y:250},{x:1200,y:250},BB],
- [BA,{x:1200,y:1200},BB],
- [BA,{x:1200,y:2150},{x:2150,y:2150},BB]];
+/* ---- Peta: data murni. Markas Terang (ba) di kiri bawah, markas Gelap (bb) di kanan atas.
+   lanes  = titik belok tiap jalur (markas ditambahkan otomatis di awal dan akhir)
+   towers = [tim, posisi 0..1 sepanjang jalur] untuk setiap jalur
+   camps  = [x, y, besar?] kamp hutan netral;  per = creep per jalur tiap gelombang;  enemies = jumlah hero musuh
+   Untuk menambah peta, cukup tambah satu objek di array ini. ---- */
+const MAPS=[
+ {n:'Tiga Jalur',d:'Klasik: 3 jalur dan 6 kamp hutan',size:2400,ba:[250,2150],bb:[2150,250],
+  lanes:[[[250,1200],[250,250],[1200,250]],[[1200,1200]],[[1200,2150],[2150,2150]]],
+  towers:[[0,.22],[0,.38],[1,.78],[1,.62]],per:3,enemies:1,
+  camps:[[600,1000],[1000,600],[1800,1400],[1400,1800],[1200,700],[1200,1700]],
+  th:{bg:'#10201f',lane:'#2b3d36',camp:'#1a2c28'}},
+ {n:'Lembah Dua Jalur',d:'2 jalur melengkung, kamp besar di tengah',size:2400,ba:[300,2100],bb:[2100,300],
+  lanes:[[[300,1200],[450,650],[900,350],[1500,300]],[[1200,2100],[1750,1950],[2050,1500],[2100,900]]],
+  towers:[[0,.2],[0,.38],[1,.8],[1,.62]],per:4,enemies:1,
+  camps:[[1200,1200,1],[700,1400],[1000,1700],[1400,700],[1700,1000]],
+  th:{bg:'#1b1a2e',lane:'#3a3556',camp:'#262341'}},
+ {n:'Arena Kilat',d:'1 jalur berkelok, singkat, 2 hero musuh',size:1600,ba:[200,1400],bb:[1400,200],
+  lanes:[[[200,900],[800,900],[800,500],[1400,500]]],
+  towers:[[0,.18],[0,.34],[1,.82],[1,.66]],per:6,enemies:2,
+  camps:[[500,500],[1100,1100],[1100,800]],
+  th:{bg:'#2a1f14',lane:'#5a4630',camp:'#3a2b1c'}}];
+let MAP,BA,BB,LANES;
+function loadMap(m){
+  MAP=m;W=H=m.size;BA={x:m.ba[0],y:m.ba[1]};BB={x:m.bb[0],y:m.bb[1]};
+  LANES=m.lanes.map(l=>[BA,...l.map(p=>({x:p[0],y:p[1]})),BB]);
+}
 function pathLen(p){let s=0;for(let i=1;i<p.length;i++)s+=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y);return s}
 function pointAt(p,f){let t=f*pathLen(p);for(let i=1;i<p.length;i++){const l=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y);if(t<=l){const k=t/l;return{x:p[i-1].x+(p[i].x-p[i-1].x)*k,y:p[i-1].y+(p[i].y-p[i-1].y)*k}}t-=l}return p[p.length-1]}
 
@@ -112,14 +137,14 @@ const ITEMS=[
 
 /* ---- State ---- */
 let units=[],shots=[],frame=0,time=0,wave=0,nextWave=3,over=false,started=false,paused=false,hero,def,chosen=[],kills=0,uid=0;
-const cam={x:BA.x,y:BA.y};
+const cam={x:0,y:0};
 function mk(o){o.id=uid++;o.max=o.hp;o.cd=0;o.acc=0;return(units.push(o),o)}
 function mkCreep(team,lane,off){
   const path=team?LANES[lane].slice().reverse():LANES[lane];
   mk({type:'creep',team,x:path[0].x+off*(team?-1:1),y:path[0].y,hp:110,dmg:9,range:34,speed:70,rate:1,r:9,path,wp:1,lane});
 }
 function enemyHero(){
-  const lane=Math.floor(Math.random()*3),path=LANES[lane].slice().reverse();
+  const lane=Math.floor(Math.random()*LANES.length),path=LANES[lane].slice().reverse();
   const u=mk({type:'hero',ai:true,team:1,x:BB.x,y:BB.y,hp:420+wave*8,dmg:24,range:60,speed:120,rate:.9,r:14,path,wp:1,lane});
   /* musuh membawa 2 skill acak (hanya yang tidak perlu dibidik) */
   const pool=SKILLS.filter(s=>!s.ult&&['burst','bolt','stun','slow','drain'].includes(s.type)).sort(()=>Math.random()-.5);
@@ -128,11 +153,16 @@ function enemyHero(){
 function setup(){
   mk({type:'base',team:0,x:BA.x,y:BA.y,hp:2500,r:44,dmg:0,range:0});
   mk({type:'base',team:1,x:BB.x,y:BB.y,hp:2500,r:44,dmg:0,range:0});
-  LANES.forEach((p,l)=>[[0,.22],[0,.38],[1,.78],[1,.62]].forEach(([t,f])=>{
+  LANES.forEach(p=>MAP.towers.forEach(([t,f])=>{
     const q=pointAt(p,f);mk({type:'tower',team:t,x:q.x,y:q.y,hp:700,dmg:34,range:240,speed:0,rate:1,r:20});}));
+  /* kamp hutan netral (tim 2): diam di tempat, menyerang siapa pun yang mendekat */
+  for(const c of MAP.camps){const big=c[2],n=big?4:3;
+    for(let i=0;i<n;i++){const a=i/n*6.28,x=c[0]+Math.cos(a)*24,y=c[1]+Math.sin(a)*24;
+      mk({type:'neutral',team:2,x,y,home:{x,y},hp:big?420:220,dmg:big?20:13,range:40,speed:0,rate:1.1,r:big?14:11,gold:big?45:22})}}
   hero=mk({type:'hero',player:true,team:0,x:BA.x+60,y:BA.y-60,hp:def.hp,dmg:def.dmg,range:def.range,speed:def.speed,rate:def.rate,r:15,lvl:1,
     skills:chosen,cds:[0,0,0,0],cdr:0,regen:2,gold:60,dest:null,target:null});
-  enemyHero();
+  for(let i=0;i<(MAP.enemies||1);i++)enemyHero();
+  cam.x=hero.x;cam.y=hero.y;
   buildBar();
 }
 
@@ -144,8 +174,9 @@ function hit(t,a,from){
   if(t.bt>0)a*=t.ar;
   t.hp-=a;
   if(t.hp>0)return;t.dead=true;
-  if(from&&from.team===0&&(t.type==='creep'||t.type==='hero')){kills++;lvlCheck()}
-  if(from===hero){hero.gold+=t.type==='creep'?18:t.type==='hero'?90:t.type==='tower'?60:0}
+  if(from&&from.team===0&&(t.type==='creep'||t.type==='hero'||t.type==='neutral')){kills++;lvlCheck()}
+  if(from===hero){hero.gold+=t.type==='creep'?18:t.type==='hero'?90:t.type==='tower'?60:t.type==='neutral'?t.gold:0}
+  if(t.type==='neutral')t.respawn=45;
   if(t.type==='base')finish(t.team===1);
   if(t.player){t.respawn=6;}
   if(t.ai){t.respawn=14;}
@@ -165,6 +196,7 @@ function step(u,dt){
   if(u.bt>0)u.bt-=dt;
   if(u.stun>0){u.stun-=dt;return}
   if(u.type==='tower'){const t=nearest(u,u.range);if(t)attack(u,t);return}
+  if(u.type==='neutral'){const t=nearest(u,u.range);if(t)attack(u,t);else u.hp=Math.min(u.max,u.hp+dt*10);return}
   if(u.player){
     if(u.target&&!u.target.dead){
       if(dist(u,u.target)-u.target.r>u.range)moveTo(u,u.target.x,u.target.y,dt);else attack(u,u.target);
@@ -230,12 +262,12 @@ function useSkill(i){
 /* ---- Update dengan LOD: unit jauh dari kamera diproses lebih jarang ---- */
 function update(dt){
   time+=dt;frame++;
-  if(time>=nextWave){wave++;nextWave+=22;for(let l=0;l<3;l++)for(let i=0;i<3;i++){mkCreep(0,l,i*26);mkCreep(1,l,i*26)}}
+  if(time>=nextWave){wave++;nextWave+=22;for(let l=0;l<LANES.length;l++)for(let i=0;i<MAP.per;i++){mkCreep(0,l,i*26);mkCreep(1,l,i*26)}}
   for(let i=0;i<4;i++)if(hero.cds[i]>0)hero.cds[i]-=dt;
   hero.gold+=dt*2.5;
   for(const u of units){
     if(u.dead){if(u.respawn!==undefined){u.respawn-=dt;if(u.respawn<=0){u.dead=false;u.hp=u.max;u.respawn=undefined;
-      const b=u.team?BB:BA;u.x=b.x;u.y=b.y;if(u.player){u.dest=null;u.target=null}if(u.ai){u.wp=1}}}continue}
+      const b=u.home||(u.team?BB:BA);u.x=b.x;u.y=b.y;u.stun=u.slow=u.bt=0;if(u.player){u.dest=null;u.target=null}if(u.ai){u.wp=1}}}continue}
     u.acc+=dt;
     const far=u.type!=='hero'&&Math.hypot(u.x-cam.x,u.y-cam.y)>1100;
     if(far&&(frame+u.id)%4)continue;   /* LOD simulasi */
@@ -249,21 +281,24 @@ function update(dt){
 /* ---- Gambar dengan LOD: culling + bentuk sederhana untuk unit jauh ---- */
 function draw(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle='#10201f';ctx.fillRect(0,0,vw,vh);
+  const th=MAP.th;
+  ctx.fillStyle=th.bg;ctx.fillRect(0,0,vw,vh);
   const ox=vw/2-cam.x,oy=vh/2-cam.y;
   ctx.save();ctx.translate(ox,oy);
   ctx.strokeStyle='#ffffff08';ctx.lineWidth=1;ctx.beginPath();
   for(let x=Math.max(0,Math.floor((cam.x-vw/2)/200)*200);x<=Math.min(W,cam.x+vw/2);x+=200){ctx.moveTo(x,cam.y-vh/2);ctx.lineTo(x,cam.y+vh/2)}
   for(let y=Math.max(0,Math.floor((cam.y-vh/2)/200)*200);y<=Math.min(H,cam.y+vh/2);y+=200){ctx.moveTo(cam.x-vw/2,y);ctx.lineTo(cam.x+vw/2,y)}
   ctx.stroke();
-  ctx.strokeStyle='#2b3d36';ctx.lineWidth=90;ctx.lineJoin='round';
+  ctx.strokeStyle=th.lane;ctx.lineWidth=90;ctx.lineJoin='round';
   for(const p of LANES){ctx.beginPath();p.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));ctx.stroke()}
   ctx.strokeStyle='#ffffff0d';ctx.lineWidth=2;ctx.strokeRect(0,0,W,H);
   const L=cam.x-vw/2-60,R=cam.x+vw/2+60,T=cam.y-vh/2-60,B=cam.y+vh/2+60;
+  ctx.fillStyle=th.camp;
+  for(const c of MAP.camps){if(c[0]<L-60||c[0]>R+60||c[1]<T-60||c[1]>B+60)continue;ctx.beginPath();ctx.arc(c[0],c[1],c[2]?62:52,0,6.3);ctx.fill()}
   for(const u of units){
     if(u.dead||u.x<L||u.x>R||u.y<T||u.y>B)continue;
-    const col=u.team?'#e0566f':'#4fd1b5',d=Math.hypot(u.x-hero.x,u.y-hero.y);
-    if(d>650&&u.type==='creep'){ctx.fillStyle=col;ctx.fillRect(u.x-2,u.y-2,4,4);continue}  /* LOD jauh */
+    const col=u.team===2?'#b79b5e':u.team?'#e0566f':'#4fd1b5',d=Math.hypot(u.x-hero.x,u.y-hero.y),minor=u.type==='creep'||u.type==='neutral';
+    if(d>650&&minor){ctx.fillStyle=col;ctx.fillRect(u.x-2,u.y-2,4,4);continue}  /* LOD jauh */
     ctx.fillStyle=col;ctx.beginPath();
     if(u.type==='tower'){ctx.rect(u.x-u.r,u.y-u.r,u.r*2,u.r*2)}
     else if(u.type==='base'){ctx.rect(u.x-u.r,u.y-u.r,u.r*2,u.r*2);ctx.fillStyle=col+'aa'}
@@ -273,7 +308,7 @@ function draw(){
     else if(u.slow>0){ctx.strokeStyle='#8ab4ff';ctx.lineWidth=3;ctx.stroke()}
     else if(u.bt>0){ctx.strokeStyle='#ff9a4f';ctx.lineWidth=3;ctx.stroke()}
     if(u.player){ctx.strokeStyle='#e6c35c';ctx.lineWidth=3;ctx.stroke()}
-    if(d<650&&u.hp<u.max||u.type!=='creep'){
+    if(d<650&&u.hp<u.max||!minor){
       const w=u.r*2+(u.type==='base'?20:6);ctx.fillStyle='#000a';ctx.fillRect(u.x-w/2,u.y-u.r-10,w,5);
       ctx.fillStyle=col;ctx.fillRect(u.x-w/2,u.y-u.r-10,w*Math.max(0,u.hp/u.max),5)}
   }
@@ -284,7 +319,7 @@ function draw(){
   ctx.restore();
   /* minimap */
   mc.clearRect(0,0,120,120);const k=120/W;
-  for(const u of units){if(u.dead)continue;mc.fillStyle=u.team?'#e0566f':'#4fd1b5';const s=u.type==='creep'?2:u.type==='hero'?4:5;mc.fillRect(u.x*k-s/2,u.y*k-s/2,s,s)}
+  for(const u of units){if(u.dead)continue;mc.fillStyle=u.team===2?'#b79b5e':u.team?'#e0566f':'#4fd1b5';const s=u.type==='creep'||u.type==='neutral'?2:u.type==='hero'?4:5;mc.fillRect(u.x*k-s/2,u.y*k-s/2,s,s)}
   mc.strokeStyle='#fff6';mc.strokeRect((cam.x-vw/2)*k,(cam.y-vh/2)*k,vw*k,vh*k);
   /* HUD */
   $('info').textContent='Level '+hero.lvl+' · Gelombang '+wave+' · Kill '+kills+' · Emas '+Math.floor(hero.gold)+(hero.dead?' · bangkit '+Math.ceil(hero.respawn)+'d':'');
@@ -306,6 +341,24 @@ function buildBar(){
   hero.skills.forEach((s,i)=>{const b=document.createElement('button');if(s.ult)b.className='ult';
     b.innerHTML='<span>'+'QWER'[i]+'</span><small>'+s.n+'</small>';b.onclick=()=>useSkill(i);bar.appendChild(b)});
 }
+
+/* ---- Pilih peta (thumbnail digambar dari data peta) ---- */
+function thumb(m){
+  const c=document.createElement('canvas');c.width=c.height=96;
+  const g=c.getContext('2d'),k=96/m.size;
+  g.fillStyle=m.th.bg;g.fillRect(0,0,96,96);
+  g.strokeStyle=m.th.lane;g.lineWidth=7;g.lineJoin='round';
+  m.lanes.forEach(l=>{g.beginPath();g.moveTo(m.ba[0]*k,m.ba[1]*k);l.forEach(p=>g.lineTo(p[0]*k,p[1]*k));g.lineTo(m.bb[0]*k,m.bb[1]*k);g.stroke()});
+  g.fillStyle='#b79b5e';m.camps.forEach(p=>{g.beginPath();g.arc(p[0]*k,p[1]*k,3,0,6.3);g.fill()});
+  g.fillStyle='#4fd1b5';g.fillRect(m.ba[0]*k-5,m.ba[1]*k-5,10,10);
+  g.fillStyle='#e0566f';g.fillRect(m.bb[0]*k-5,m.bb[1]*k-5,10,10);
+  return c;
+}
+let mapIdx=0;const mbtns=[];
+MAPS.forEach((m,i)=>{const b=document.createElement('button');b.className='h'+(i?'':' sel');
+  b.appendChild(thumb(m));b.insertAdjacentHTML('beforeend','<b>'+m.n+'</b><span>'+m.d+'</span>');
+  b.onclick=()=>{mapIdx=i;mbtns.forEach((x,j)=>x.classList.toggle('sel',j===i))};
+  mbtns.push(b);$('maps').appendChild(b)});
 
 /* ---- Pilih hero -> draft skill ---- */
 HEROES.forEach(h=>{const b=document.createElement('button');b.className='h';b.innerHTML='<b>'+h.n+'</b><span>'+h.d+'</span>';
@@ -330,7 +383,7 @@ $('rand').onclick=()=>{
   pick=[...sh(SKILLS.filter(s=>!s.ult)).slice(0,3),sh(SKILLS.filter(s=>s.ult))[0]];refreshDraft()};
 $('go').onclick=()=>{
   chosen=[...pick.filter(s=>!s.ult),...pick.filter(s=>s.ult)];
-  setup();started=true;$('draft').classList.add('hide')};
+  loadMap(MAPS[mapIdx]);setup();started=true;$('draft').classList.add('hide')};
 refreshDraft();
 
 /* ---- Toko ---- */
