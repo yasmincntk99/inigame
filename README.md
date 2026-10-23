@@ -28,6 +28,19 @@ Ultimate: Meteor, Amuk, Gempa Agung, Penghukum.
 
 Menambah skill baru cukup menambah satu baris di array `SKILLS` di `index.html`. Tipe yang tersedia: `burst`, `bolt`, `stun`, `slow`, `dash`, `heal`, `drain`, `buff`, `execute`.
 
+## Grafik (pixel art)
+
+Semua gambar digambar lewat kode di `index.html`, tanpa file gambar, jadi tetap satu file dan orisinal. Sprite berukuran 14x14 piksel, diberi outline otomatis, lalu disimpan sekali ke kanvas tersembunyi dan ditempel ulang tiap frame.
+
+- **Penjaga:** ksatria berhelm berbulu, perisai besar, pedang.
+- **Pemanah:** tudung hijau, tabung panah, busur.
+- **Penyihir:** topi runcing, jubah ungu bertabur bintang, tongkat berbola.
+- Tim dibedakan lewat warna aksen (hijau kebiruan = kamu, merah = musuh) dan cincin di kaki hero. Hero musuh memakai salah satu dari tiga sprite itu.
+- Prajurit jalur, lumpur hutan (kamp biasa dan kamp besar), menara, dan markas punya sprite sendiri.
+- Tanah, jalur, dan dekorasi (pohon, kristal, kaktus, batu) mengikuti tema tiap peta. Dekorasi ditaruh otomatis dengan seed tetap dan tidak menutup jalur, kamp, atau markas.
+
+Menambah atau mengubah sprite cukup menambah satu entri di `SPRDEF` (daftar kotak warna `p(x,y,lebar,tinggi,warna)`).
+
 ## Ringan (LOD)
 
 Unit jauh dari kamera diproses lebih jarang dan digambar sebagai titik; unit di luar layar tidak digambar.

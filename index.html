@@ -36,6 +36,7 @@ button.h.sel{border-color:var(--gold);background:#3a3a1f}
 button.h:disabled{opacity:.4;cursor:default}
 #maps button.h{width:180px;min-width:0}
 #maps canvas{display:block;margin:0 auto 8px;border-radius:6px}
+#picks canvas{display:block;margin:0 auto 6px;image-rendering:pixelated}
 .hide{display:none}
 </style>
 </head>
@@ -87,21 +88,43 @@ const MAPS=[
   lanes:[[[250,1200],[250,250],[1200,250]],[[1200,1200]],[[1200,2150],[2150,2150]]],
   towers:[[0,.22],[0,.38],[1,.78],[1,.62]],per:3,enemies:1,
   camps:[[600,1000],[1000,600],[1800,1400],[1400,1800],[1200,700],[1200,1700]],
-  th:{bg:'#10201f',lane:'#2b3d36',camp:'#1a2c28'}},
+  th:{bg:'#10201f',lane:'#2b3d36',camp:'#1a2c28',edge:'#0b1514',sp:['#142926','#0d1a19'],ln:['#344a41','#243630'],tk:'tree',t1:'#3f8f4f',t2:'#5fb36f',tr:'#7a4e2d',rock:'#6f8196'}},
  {n:'Lembah Dua Jalur',d:'2 jalur melengkung, kamp besar di tengah',size:2400,ba:[300,2100],bb:[2100,300],
   lanes:[[[300,1200],[450,650],[900,350],[1500,300]],[[1200,2100],[1750,1950],[2050,1500],[2100,900]]],
   towers:[[0,.2],[0,.38],[1,.8],[1,.62]],per:4,enemies:1,
   camps:[[1200,1200,1],[700,1400],[1000,1700],[1400,700],[1700,1000]],
-  th:{bg:'#1b1a2e',lane:'#3a3556',camp:'#262341'}},
+  th:{bg:'#1b1a2e',lane:'#3a3556',camp:'#262341',edge:'#12112a',sp:['#22203a','#14132a'],ln:['#463f69','#312c4b'],tk:'crystal',t1:'#6b4ba8',t2:'#9a7be0',tr:'#45307a',rock:'#5a6aa0'}},
  {n:'Arena Kilat',d:'1 jalur berkelok, singkat, 2 hero musuh',size:1600,ba:[200,1400],bb:[1400,200],
   lanes:[[[200,900],[800,900],[800,500],[1400,500]]],
   towers:[[0,.18],[0,.34],[1,.82],[1,.66]],per:6,enemies:2,
-  camps:[[500,500],[1100,1100],[1100,800]],
-  th:{bg:'#2a1f14',lane:'#5a4630',camp:'#3a2b1c'}}];
+  camps:[[480,480],[1100,1100],[1130,830]],
+  th:{bg:'#2a1f14',lane:'#5a4630',camp:'#3a2b1c',edge:'#1c140c',sp:['#33261a','#21170e'],ln:['#6a5238','#4b3925'],tk:'cactus',t1:'#6f8a3a',t2:'#a3bf55',tr:'#6b4a2a',rock:'#9a8468'}}];
 let MAP,BA,BB,LANES;
 function loadMap(m){
   MAP=m;W=H=m.size;BA={x:m.ba[0],y:m.ba[1]};BB={x:m.bb[0],y:m.bb[1]};
   LANES=m.lanes.map(l=>[BA,...l.map(p=>({x:p[0],y:p[1]})),BB]);
+  buildLook(m);
+}
+/* Tampilan peta: pola tanah dan jalur, sprite dekorasi, posisi pohon dan batu (acak tetap per peta) */
+function seeded(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function segDist(px,py,a,b){const dx=b.x-a.x,dy=b.y-a.y;let t=((px-a.x)*dx+(py-a.y)*dy)/(dx*dx+dy*dy||1);t=Math.max(0,Math.min(1,t));return Math.hypot(px-a.x-dx*t,py-a.y-dy*t)}
+function buildLook(m){
+  const rnd=seeded(m.size*7+m.lanes.length),th=m.th;
+  const tile=(base,cols,n)=>{const c=document.createElement('canvas');c.width=c.height=96;const g=c.getContext('2d');
+    g.fillStyle=base;g.fillRect(0,0,96,96);
+    for(let i=0;i<n;i++){g.fillStyle=cols[i%2];g.fillRect(Math.floor(rnd()*32)*3,Math.floor(rnd()*32)*3,3,3)}return c};
+  m.ground=ctx.createPattern(tile(th.bg,th.sp,40),'repeat');
+  m.laneTex=ctx.createPattern(tile(th.lane,th.ln,55),'repeat');
+  m.sp={tree:buildSpr(SPRDEF.tree,th),rock:buildSpr(SPRDEF.rock,th)};
+  const blocked=(x,y)=>{
+    for(const p of LANES)for(let i=1;i<p.length;i++)if(segDist(x,y,p[i-1],p[i])<95)return true;
+    for(const c of m.camps)if(Math.hypot(x-c[0],y-c[1])<85)return true;
+    return Math.hypot(x-BA.x,y-BA.y)<150||Math.hypot(x-BB.x,y-BB.y)<150};
+  m.deco=[];const N=Math.round(m.size*m.size/42000);
+  for(let i=0,tries=0;i<N&&tries<N*20;tries++){
+    const x=40+rnd()*(m.size-80),y=60+rnd()*(m.size-100);
+    if(blocked(x,y))continue;m.deco.push({x,y,k:rnd()<.3?1:0});i++}
+  m.deco.sort((a,b)=>a.y-b.y);
 }
 function pathLen(p){let s=0;for(let i=1;i<p.length;i++)s+=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y);return s}
 function pointAt(p,f){let t=f*pathLen(p);for(let i=1;i<p.length;i++){const l=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y);if(t<=l){const k=t/l;return{x:p[i-1].x+(p[i].x-p[i-1].x)*k,y:p[i-1].y+(p[i].y-p[i-1].y)*k}}t-=l}return p[p.length-1]}
@@ -111,6 +134,84 @@ const HEROES=[
  {n:'Penjaga',d:'Jarak dekat, tebal',hp:520,dmg:34,range:50,speed:165,rate:.8},
  {n:'Pemanah',d:'Jarak jauh, cepat',hp:340,dmg:30,range:280,speed:185,rate:.65},
  {n:'Penyihir',d:'Jarak sedang, tipis',hp:300,dmg:26,range:230,speed:170,rate:.9}];
+
+/* ---- Sprite pixel art: digambar lewat kode (kotak 14x14), diberi outline otomatis,
+   lalu disimpan sekali ke kanvas tersembunyi dan ditempel ulang tiap frame ---- */
+const TEAMC=[{m:'#4fd1b5',d:'#2c8a77'},{m:'#e0566f',d:'#9b2f45'}];
+const blob=(c1,c2,c3,big)=>p=>{
+  p(4,3,6,1,c1);p(3,4,8,1,c1);p(2,5,10,6,c1);p(3,11,8,1,c1);p(2,9,10,2,c2);p(3,11,8,1,c2);p(4,12,6,1,c2);
+  p(4,4,2,1,c3);p(4,6,2,2,'#ffdf6e');p(8,6,2,2,'#ffdf6e');p(5,7,1,1,'#14141c');p(9,7,1,1,'#14141c');p(5,10,4,1,'#3a3220');
+  p(5,2,1,1,c2);p(8,2,1,1,c2);if(big){p(3,1,1,3,c2);p(10,1,1,3,c2)}};
+const SPRDEF={
+ /* Penjaga: ksatria tebal, helm berbulu, perisai besar warna tim, pedang */
+ h0:{k:2,fn:(p,t)=>{
+  p(3,12,3,2,'#3b3f4a');p(8,12,3,2,'#3b3f4a');p(4,10,2,2,'#566273');p(8,10,2,2,'#566273');
+  p(3,6,8,5,'#8c9aab');p(3,10,8,1,'#7a4e2d');p(4,7,3,2,'#dfe6ee');
+  p(4,1,6,5,'#8c9aab');p(5,2,2,1,'#dfe6ee');p(6,4,4,1,'#14141c');
+  p(6,0,3,1,t.m);p(9,1,1,2,t.m);
+  p(0,6,4,6,t.m);p(0,6,4,1,t.d);p(0,11,4,1,t.d);p(0,6,1,6,t.d);p(1,8,2,2,'#e6c35c');
+  p(12,2,1,7,'#dfe6ee');p(11,8,3,1,'#e6c35c');p(12,9,1,2,'#7a4e2d')}},
+ /* Pemanah: ramping, tudung hijau berbulu tim, tabung panah, busur */
+ h1:{k:2,fn:(p,t)=>{
+  p(4,12,2,2,'#4a2c17');p(8,12,2,2,'#4a2c17');p(4,10,2,2,'#27603a');p(8,10,2,2,'#27603a');
+  p(4,6,6,5,'#3f8f4f');p(4,9,6,1,'#7a4e2d');p(5,7,2,1,'#5fb36f');
+  p(5,3,4,3,'#f0c8a0');p(4,1,6,2,'#27603a');p(4,3,1,4,'#27603a');p(9,3,1,3,'#27603a');p(8,4,1,1,'#14141c');
+  p(9,0,2,2,t.m);
+  p(2,5,2,5,'#7a4e2d');p(2,4,2,1,t.m);
+  p(12,2,1,9,'#a8743c');p(11,2,1,1,'#a8743c');p(11,10,1,1,'#a8743c');p(11,3,1,7,'#dfe6ee');
+  p(8,6,3,1,'#c9a26a');p(9,6,1,1,'#f0c8a0')}},
+ /* Penyihir: topi runcing berpita tim, jubah ungu bertabur bintang, tongkat berbola */
+ h2:{k:2,fn:(p,t)=>{
+  p(7,0,1,1,'#45307a');p(6,1,3,1,'#6b4ba8');p(5,2,5,1,'#6b4ba8');p(4,3,7,1,t.m);p(3,4,9,1,'#45307a');
+  p(5,5,5,2,'#f0c8a0');p(8,5,1,1,'#14141c');
+  p(4,7,7,1,'#6b4ba8');p(4,8,7,4,'#6b4ba8');p(3,11,9,2,'#6b4ba8');p(3,13,9,1,'#45307a');
+  p(6,7,3,2,'#dfe6ee');p(7,10,1,1,'#e6c35c');p(5,12,1,1,'#e6c35c');
+  p(12,4,1,9,'#7a4e2d');p(11,1,3,3,'#7fe0ff');p(12,1,1,1,'#ffffff');p(10,8,2,1,'#f0c8a0')}},
+ /* Pasukan jalur: prajurit kecil bertombak, badan warna tim */
+ c:{k:1,fn:(p,t)=>{
+  p(5,10,1,3,'#3b3f4a');p(8,10,1,3,'#3b3f4a');p(4,6,6,4,t.m);p(4,9,6,1,t.d);
+  p(5,3,4,3,'#f0c8a0');p(5,2,4,2,'#8c9aab');p(8,4,1,1,'#14141c');
+  p(11,1,1,11,'#c9a26a');p(11,0,1,1,'#dfe6ee')}},
+ n:{k:2,fn:blob('#9b8a63','#6e6040','#c2b184',false)},
+ nb:{k:2,fn:blob('#6f8f5a','#47633a','#9cc084',true)},
+ /* Menara */
+ t:{k:3,fn:(p,t)=>{
+  p(2,5,10,8,'#8c9aab');p(10,5,2,8,'#566273');p(2,8,10,1,'#566273');p(2,11,10,1,'#566273');
+  p(5,5,1,3,'#566273');p(8,8,1,3,'#566273');p(5,11,1,2,'#566273');
+  p(2,3,2,2,'#8c9aab');p(6,3,2,2,'#8c9aab');p(10,3,2,2,'#8c9aab');
+  p(7,0,1,3,'#7a4e2d');p(8,0,4,2,t.m);p(8,2,2,1,t.d);
+  p(6,10,3,3,'#14141c');p(6,6,2,2,'#14141c')}},
+ /* Markas: kastil dengan dua menara dan panji tim */
+ b:{k:7,fn:(p,t)=>{
+  p(0,3,4,10,'#8c9aab');p(10,3,4,10,'#8c9aab');p(4,6,6,7,'#9aa8ba');
+  p(3,3,1,10,'#566273');p(13,3,1,10,'#566273');
+  p(0,2,1,1,'#8c9aab');p(2,2,1,1,'#8c9aab');p(10,2,1,1,'#8c9aab');p(12,2,1,1,'#8c9aab');
+  p(4,5,1,1,'#9aa8ba');p(6,5,2,1,'#9aa8ba');p(9,5,1,1,'#9aa8ba');
+  p(1,5,2,4,t.m);p(1,8,2,1,t.d);p(11,5,2,4,t.m);p(11,8,2,1,t.d);
+  p(5,9,4,4,'#14141c');p(6,8,2,1,'#14141c');p(6,6,2,1,'#14141c')}},
+ /* Dekorasi peta (warna mengikuti tema peta) */
+ tree:{k:3,fn:(p,t)=>{
+  if(t.tk==='crystal'){
+    p(4,12,6,1,t.tr);p(6,3,3,9,t.t1);p(7,1,1,2,t.t2);p(7,3,1,8,t.t2);
+    p(3,7,2,5,t.t1);p(4,6,1,1,t.t2);p(10,6,2,6,t.t1);p(11,5,1,1,t.t2)}
+  else if(t.tk==='cactus'){
+    p(6,2,3,11,t.t1);p(7,2,1,11,t.t2);p(3,6,3,1,t.t1);p(3,4,1,3,t.t1);p(9,8,3,1,t.t1);p(11,6,1,3,t.t1);p(5,12,5,1,t.tr)}
+  else{
+    p(5,1,4,2,t.t2);p(4,3,6,2,t.t1);p(2,5,10,3,t.t1);p(3,8,8,1,t.t1);p(6,9,2,4,t.tr);p(5,4,2,1,t.t2);p(4,6,2,1,t.t2)}}},
+ rock:{k:2,fn:(p,t)=>{
+  p(3,8,8,4,t.rock);p(4,6,6,2,t.rock);p(5,5,3,1,t.rock);p(4,7,2,1,'#cfd8e3');p(8,10,3,2,'#3b3f4a');p(3,11,3,1,'#3b3f4a')}}};
+function buildSpr(d,t){
+  const lc=document.createElement('canvas');lc.width=lc.height=16;const g=lc.getContext('2d');
+  d.fn((x,y,w,h,c)=>{g.fillStyle=c;g.fillRect(x+1,y+1,w,h)},t);
+  const id=g.getImageData(0,0,16,16),s=id.data,o=new Uint8ClampedArray(s);
+  for(let y=0;y<16;y++)for(let x=0;x<16;x++){const i=(y*16+x)*4;if(s[i+3])continue;
+    if((x>0&&s[i-1])||(x<15&&s[i+7])||(y>0&&s[i-61])||(y<15&&s[i+67])){o[i]=20;o[i+1]=20;o[i+2]=28;o[i+3]=255}}
+  g.putImageData(new ImageData(o,16,16),0,0);
+  const c=document.createElement('canvas');c.width=c.height=16*d.k;
+  const cg=c.getContext('2d');cg.imageSmoothingEnabled=false;cg.drawImage(lc,0,0,c.width,c.height);return c;
+}
+const SPR={};
+function getSpr(kind,team){const key=kind+'_'+team;return SPR[key]||(SPR[key]=buildSpr(SPRDEF[kind],TEAMC[team]||TEAMC[0]))}
 
 /* ---- Kolam skill (draft ala Legends of Dota): 8 biasa + 4 ultimate ---- */
 const SKILLS=[
@@ -138,14 +239,14 @@ const ITEMS=[
 /* ---- State ---- */
 let units=[],shots=[],frame=0,time=0,wave=0,nextWave=3,over=false,started=false,paused=false,hero,def,chosen=[],kills=0,uid=0;
 const cam={x:0,y:0};
-function mk(o){o.id=uid++;o.max=o.hp;o.cd=0;o.acc=0;return(units.push(o),o)}
+function mk(o){o.id=uid++;o.max=o.hp;o.cd=0;o.acc=0;o.fx=o.team===1?-1:1;return(units.push(o),o)}
 function mkCreep(team,lane,off){
   const path=team?LANES[lane].slice().reverse():LANES[lane];
   mk({type:'creep',team,x:path[0].x+off*(team?-1:1),y:path[0].y,hp:110,dmg:9,range:34,speed:70,rate:1,r:9,path,wp:1,lane});
 }
 function enemyHero(){
   const lane=Math.floor(Math.random()*LANES.length),path=LANES[lane].slice().reverse();
-  const u=mk({type:'hero',ai:true,team:1,x:BB.x,y:BB.y,hp:420+wave*8,dmg:24,range:60,speed:120,rate:.9,r:14,path,wp:1,lane});
+  const u=mk({type:'hero',ai:true,team:1,x:BB.x,y:BB.y,hp:420+wave*8,dmg:24,range:60,speed:120,rate:.9,r:14,path,wp:1,lane,spr:Math.floor(Math.random()*3)});
   /* musuh membawa 2 skill acak (hanya yang tidak perlu dibidik) */
   const pool=SKILLS.filter(s=>!s.ult&&['burst','bolt','stun','slow','drain'].includes(s.type)).sort(()=>Math.random()-.5);
   u.sk2=pool.slice(0,2).map(d=>({d,cl:d.cd*.5}));
@@ -157,10 +258,10 @@ function setup(){
     const q=pointAt(p,f);mk({type:'tower',team:t,x:q.x,y:q.y,hp:700,dmg:34,range:240,speed:0,rate:1,r:20});}));
   /* kamp hutan netral (tim 2): diam di tempat, menyerang siapa pun yang mendekat */
   for(const c of MAP.camps){const big=c[2],n=big?4:3;
-    for(let i=0;i<n;i++){const a=i/n*6.28,x=c[0]+Math.cos(a)*24,y=c[1]+Math.sin(a)*24;
-      mk({type:'neutral',team:2,x,y,home:{x,y},hp:big?420:220,dmg:big?20:13,range:40,speed:0,rate:1.1,r:big?14:11,gold:big?45:22})}}
+    for(let i=0;i<n;i++){const a=i/n*6.28,rr=big?36:30,x=c[0]+Math.cos(a)*rr,y=c[1]+Math.sin(a)*rr;
+      mk({type:'neutral',big,team:2,x,y,home:{x,y},hp:big?420:220,dmg:big?20:13,range:40,speed:0,rate:1.1,r:big?14:11,gold:big?45:22})}}
   hero=mk({type:'hero',player:true,team:0,x:BA.x+60,y:BA.y-60,hp:def.hp,dmg:def.dmg,range:def.range,speed:def.speed,rate:def.rate,r:15,lvl:1,
-    skills:chosen,cds:[0,0,0,0],cdr:0,regen:2,gold:60,dest:null,target:null});
+    skills:chosen,cds:[0,0,0,0],cdr:0,regen:2,gold:60,dest:null,target:null,spr:HEROES.indexOf(def)});
   for(let i=0;i<(MAP.enemies||1);i++)enemyHero();
   cam.x=hero.x;cam.y=hero.y;
   buildBar();
@@ -173,6 +274,7 @@ function hit(t,a,from){
   if(t.dead)return;
   if(t.bt>0)a*=t.ar;
   t.hp-=a;
+  if((from===hero||t===hero)&&a>=1&&shots.length<60)shots.push({txt:Math.round(a),x:t.x,y:t.y-t.r-16,t:.7,d:.7,c:t===hero?'#ff9aa8':'#ffe08a'});
   if(t.hp>0)return;t.dead=true;
   if(from&&from.team===0&&(t.type==='creep'||t.type==='hero'||t.type==='neutral')){kills++;lvlCheck()}
   if(from===hero){hero.gold+=t.type==='creep'?18:t.type==='hero'?90:t.type==='tower'?60:t.type==='neutral'?t.gold:0}
@@ -184,11 +286,12 @@ function hit(t,a,from){
 function lvlCheck(){const l=1+Math.floor(kills/4);if(l>hero.lvl){hero.lvl=l;hero.max+=45;hero.hp=Math.min(hero.max,hero.hp+90);hero.dmg+=4}}
 function attack(u,t){
   if(u.cd>0)return;
+  u.fx=t.x>=u.x?1:-1;
   const b=u.bt>0;u.cd=u.rate/(b?u.rm:1);
   if(u.range>60||u.type==='tower')shots.push({a:u,x1:u.x,y1:u.y,x2:t.x,y2:t.y,t:.12});
   hit(t,u.dmg*(b?u.dm:1),u);
 }
-function moveTo(u,x,y,dt){const d=Math.hypot(x-u.x,y-u.y);if(d<2)return true;const s=Math.min(d,u.speed*(u.slow>0?.55:1)*dt);u.x+=(x-u.x)/d*s;u.y+=(y-u.y)/d*s;return d<=s}
+function moveTo(u,x,y,dt){const d=Math.hypot(x-u.x,y-u.y);if(d<2)return true;if(Math.abs(x-u.x)>.5)u.fx=x>u.x?1:-1;const s=Math.min(d,u.speed*(u.slow>0?.55:1)*dt);u.x+=(x-u.x)/d*s;u.y+=(y-u.y)/d*s;return d<=s}
 function step(u,dt){
   u.cd-=dt;
   if(u.type==='base')return;
@@ -282,37 +385,44 @@ function update(dt){
 function draw(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   const th=MAP.th;
-  ctx.fillStyle=th.bg;ctx.fillRect(0,0,vw,vh);
-  const ox=vw/2-cam.x,oy=vh/2-cam.y;
+  ctx.imageSmoothingEnabled=false;
+  ctx.fillStyle=th.edge;ctx.fillRect(0,0,vw,vh);
+  /* kamera dibulatkan ke piksel layar supaya pixel art tetap tajam */
+  const ox=Math.round((vw/2-cam.x)*dpr)/dpr,oy=Math.round((vh/2-cam.y)*dpr)/dpr;
   ctx.save();ctx.translate(ox,oy);
-  ctx.strokeStyle='#ffffff08';ctx.lineWidth=1;ctx.beginPath();
-  for(let x=Math.max(0,Math.floor((cam.x-vw/2)/200)*200);x<=Math.min(W,cam.x+vw/2);x+=200){ctx.moveTo(x,cam.y-vh/2);ctx.lineTo(x,cam.y+vh/2)}
-  for(let y=Math.max(0,Math.floor((cam.y-vh/2)/200)*200);y<=Math.min(H,cam.y+vh/2);y+=200){ctx.moveTo(cam.x-vw/2,y);ctx.lineTo(cam.x+vw/2,y)}
-  ctx.stroke();
-  ctx.strokeStyle=th.lane;ctx.lineWidth=90;ctx.lineJoin='round';
-  for(const p of LANES){ctx.beginPath();p.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));ctx.stroke()}
+  const gx=Math.max(0,Math.floor(cam.x-vw/2)-2),gy=Math.max(0,Math.floor(cam.y-vh/2)-2);
+  ctx.fillStyle=MAP.ground;ctx.fillRect(gx,gy,Math.min(W,cam.x+vw/2+2)-gx,Math.min(H,cam.y+vh/2+2)-gy);
+  const laneStroke=()=>{for(const p of LANES){ctx.beginPath();p.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));ctx.stroke()}};
+  ctx.lineJoin='round';ctx.lineWidth=100;ctx.strokeStyle=th.edge;laneStroke();
+  ctx.lineWidth=88;ctx.strokeStyle=MAP.laneTex;laneStroke();
   ctx.strokeStyle='#ffffff0d';ctx.lineWidth=2;ctx.strokeRect(0,0,W,H);
   const L=cam.x-vw/2-60,R=cam.x+vw/2+60,T=cam.y-vh/2-60,B=cam.y+vh/2+60;
   ctx.fillStyle=th.camp;
   for(const c of MAP.camps){if(c[0]<L-60||c[0]>R+60||c[1]<T-60||c[1]>B+60)continue;ctx.beginPath();ctx.arc(c[0],c[1],c[2]?62:52,0,6.3);ctx.fill()}
+  for(const o of MAP.deco){if(o.x<L-30||o.x>R+30||o.y<T-10||o.y>B+60)continue;
+    const im=o.k?MAP.sp.rock:MAP.sp.tree;ctx.drawImage(im,Math.round(o.x-im.width/2),Math.round(o.y-im.height+10))}
   for(const u of units){
     if(u.dead||u.x<L||u.x>R||u.y<T||u.y>B)continue;
     const col=u.team===2?'#b79b5e':u.team?'#e0566f':'#4fd1b5',d=Math.hypot(u.x-hero.x,u.y-hero.y),minor=u.type==='creep'||u.type==='neutral';
     if(d>650&&minor){ctx.fillStyle=col;ctx.fillRect(u.x-2,u.y-2,4,4);continue}  /* LOD jauh */
-    ctx.fillStyle=col;ctx.beginPath();
-    if(u.type==='tower'){ctx.rect(u.x-u.r,u.y-u.r,u.r*2,u.r*2)}
-    else if(u.type==='base'){ctx.rect(u.x-u.r,u.y-u.r,u.r*2,u.r*2);ctx.fillStyle=col+'aa'}
-    else ctx.arc(u.x,u.y,u.r,0,6.3);
-    ctx.fill();
-    if(u.stun>0){ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke()}
-    else if(u.slow>0){ctx.strokeStyle='#8ab4ff';ctx.lineWidth=3;ctx.stroke()}
-    else if(u.bt>0){ctx.strokeStyle='#ff9a4f';ctx.lineWidth=3;ctx.stroke()}
-    if(u.player){ctx.strokeStyle='#e6c35c';ctx.lineWidth=3;ctx.stroke()}
+    /* bayangan + cincin di kaki (pemain emas, status efek, hero berwarna tim) */
+    const big=u.type==='tower'||u.type==='base',feet=u.y+u.r*.55;
+    ctx.fillStyle='#0000004d';ctx.beginPath();ctx.ellipse(u.x,feet,u.r*(u.type==='base'?1.1:.9),u.r*.38,0,0,6.3);ctx.fill();
+    const ring=u.player?'#e6c35c':u.stun>0?'#ffffff':u.slow>0?'#8ab4ff':u.bt>0?'#ff9a4f':u.type==='hero'?col:null;
+    if(ring){ctx.strokeStyle=ring;ctx.lineWidth=2.5;ctx.beginPath();ctx.ellipse(u.x,feet,u.r*1.05,u.r*.46,0,0,6.3);ctx.stroke()}
+    /* sprite pixel art */
+    const im=u.type==='hero'?getSpr('h'+u.spr,u.team):u.type==='creep'?getSpr('c',u.team):u.type==='neutral'?getSpr(u.big?'nb':'n',0):getSpr(u.type==='tower'?'t':'b',u.team);
+    const bob=big?0:Math.abs(Math.sin((u.x+u.y)*.09))*2,cy=Math.round(u.y-(u.type==='tower'?8:u.type==='base'?22:4)-bob),px=Math.round(u.x);
+    if(u.fx<0&&!big){ctx.save();ctx.translate(px,cy);ctx.scale(-1,1);ctx.drawImage(im,-im.width/2,-im.height/2);ctx.restore()}
+    else ctx.drawImage(im,px-im.width/2,cy-im.height/2);
     if(d<650&&u.hp<u.max||!minor){
-      const w=u.r*2+(u.type==='base'?20:6);ctx.fillStyle='#000a';ctx.fillRect(u.x-w/2,u.y-u.r-10,w,5);
-      ctx.fillStyle=col;ctx.fillRect(u.x-w/2,u.y-u.r-10,w*Math.max(0,u.hp/u.max),5)}
+      const w=u.r*2+(u.type==='base'?20:6),by=u.y-u.r-10-(u.type==='tower'?14:u.type==='base'?28:u.type==='hero'?10:0);
+      ctx.fillStyle='#000a';ctx.fillRect(u.x-w/2,by,w,5);
+      ctx.fillStyle=col;ctx.fillRect(u.x-w/2,by,w*Math.max(0,u.hp/u.max),5)}
   }
   for(const s of shots){
+    if(s.txt!==undefined){const p=1-s.t/s.d;ctx.globalAlpha=Math.min(1,s.t/.25);ctx.font='bold 13px monospace';ctx.textAlign='center';
+      ctx.lineWidth=3;ctx.strokeStyle='#000b';ctx.strokeText(s.txt,s.x,s.y-p*22);ctx.fillStyle=s.c;ctx.fillText(s.txt,s.x,s.y-p*22);ctx.globalAlpha=1;continue}
     if(s.ring){ctx.strokeStyle=s.c;ctx.lineWidth=4;ctx.beginPath();ctx.arc(s.x,s.y,s.r*(1-s.t/s.d*.5),0,6.3);ctx.stroke();continue}
     ctx.strokeStyle=s.a.team?'#ff9aa8':'#9af0dc';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(s.x1,s.y1);ctx.lineTo(s.x2,s.y2);ctx.stroke()}
   if(hero.dest){ctx.strokeStyle='#e6c35c88';ctx.lineWidth=2;ctx.beginPath();ctx.arc(hero.dest.x,hero.dest.y,10,0,6.3);ctx.stroke()}
@@ -361,7 +471,8 @@ MAPS.forEach((m,i)=>{const b=document.createElement('button');b.className='h'+(i
   mbtns.push(b);$('maps').appendChild(b)});
 
 /* ---- Pilih hero -> draft skill ---- */
-HEROES.forEach(h=>{const b=document.createElement('button');b.className='h';b.innerHTML='<b>'+h.n+'</b><span>'+h.d+'</span>';
+HEROES.forEach((h,i)=>{const b=document.createElement('button');b.className='h';b.innerHTML='<b>'+h.n+'</b><span>'+h.d+'</span>';
+  const pv=document.createElement('canvas');pv.width=pv.height=64;const pg=pv.getContext('2d');pg.imageSmoothingEnabled=false;pg.drawImage(getSpr('h'+i,0),0,0,64,64);b.prepend(pv);
   b.onclick=()=>{def=h;$('start').classList.add('hide');$('draft').classList.remove('hide')};$('picks').appendChild(b)});
 let pick=[];const sbtn=new Map();
 function counts(){const u=pick.filter(s=>s.ult).length;return[pick.length-u,u]}
