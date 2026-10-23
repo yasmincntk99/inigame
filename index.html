@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Gaameai – Tiga Jalur</title>
+<style>
+:root{--bg:#10201f;--lane:#2b3d36;--a:#4fd1b5;--b:#e0566f;--ink:#e8efe6;--gold:#e6c35c}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,sans-serif;overflow:hidden;touch-action:none}
+canvas#c{position:fixed;inset:0;width:100%;height:100%}
+#mini{position:fixed;right:10px;bottom:10px;width:120px;height:120px;border:2px solid #0008;border-radius:6px;background:#0a1514cc}
+#hud{position:fixed;left:10px;top:10px;font-size:14px;line-height:1.5;text-shadow:0 1px 2px #000}
+#hp{width:160px;height:8px;background:#0008;border-radius:4px;overflow:hidden;margin-top:4px}
+#hp i{display:block;height:100%;width:100%;background:var(--a)}
+#q{position:fixed;left:14px;bottom:14px;width:76px;height:76px;border-radius:50%;border:3px solid var(--gold);background:#10201fdd;color:var(--gold);font-size:22px;font-weight:700}
+#q:disabled{opacity:.4}
+.ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#0b1514ee;text-align:center;padding:20px}
+.ov h1{font-size:clamp(28px,6vw,48px);letter-spacing:.02em}
+.ov p{max-width:42ch;opacity:.8}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+button.h{background:#1b302d;color:var(--ink);border:2px solid var(--a);border-radius:10px;padding:12px 14px;min-width:150px;font:inherit;cursor:pointer}
+button.h:hover,button.h:focus-visible{background:#24413c;outline:none}
+button.h b{display:block;font-size:17px}
+button.h span{font-size:12px;opacity:.75}
+.hide{display:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<canvas id="mini" width="120" height="120"></canvas>
+<div id="hud"><div id="info"></div><div id="hp"><i></i></div></div>
+<button id="q" disabled>Q</button>
+
+<div class="ov" id="start">
+  <h1>Tiga Jalur</h1>
+  <p>Ketuk tanah untuk berjalan, ketuk musuh untuk menyerang, tombol Q untuk jurus area. Hancurkan markas merah.</p>
+  <div class="row" id="picks"></div>
+</div>
+<div class="ov hide" id="end"><h1 id="endt"></h1><button class="h" onclick="location.reload()"><b>Main lagi</b></button></div>
+
+<script>
+"use strict";
+const W=2400,H=2400,$=id=>document.getElementById(id);
+const cv=$('c'),ctx=cv.getContext('2d'),mini=$('mini'),mc=mini.getContext('2d');
+let vw,vh,dpr;
+function resize(){dpr=Math.min(devicePixelRatio||1,2);vw=innerWidth;vh=innerHeight;cv.width=vw*dpr;cv.height=vh*dpr}
+addEventListener('resize',resize);resize();
+
+/* ---- Peta: tiga jalur dari markas Terang (kiri bawah) ke markas Gelap (kanan atas) ---- */
+const BA={x:250,y:2150},BB={x:2150,y:250};
+const LANES=[
+ [BA,{x:250,y:1200},{x:250,y:250},{x:1200,y:250},BB],
+ [BA,{x:1200,y:1200},BB],
+ [BA,{x:1200,y:2150},{x:2150,y:2150},BB]];
+function pathLen(p){let s=0;for(let i=1;i<p.length;i++)s+=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y);return s}
+function pointAt(p,f){let t=f*pathLen(p);for(let i=1;i<p.length;i++){const l=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y);if(t<=l){const k=t/l;return{x:p[i-1].x+(p[i].x-p[i-1].x)*k,y:p[i-1].y+(p[i].y-p[i-1].y)*k}}t-=l}return p[p.length-1]}
+
+/* ---- Hero ---- */
+const HEROES=[
+ {n:'Penjaga',d:'Jarak dekat, tebal',hp:520,dmg:34,range:50,speed:165,rate:.8,sk:{r:150,dmg:90,cd:7}},
+ {n:'Pemanah',d:'Jarak jauh, cepat',hp:340,dmg:30,range:280,speed:185,rate:.65,sk:{r:120,dmg:70,cd:6}},
+ {n:'Penyihir',d:'Jurus area besar',hp:300,dmg:26,range:230,speed:170,rate:.9,sk:{r:230,dmg:130,cd:9}}];
+
+/* ---- State ---- */
+let units=[],shots=[],frame=0,time=0,wave=0,nextWave=3,over=false,started=false,hero,def,kills=0,uid=0;
+const cam={x:BA.x,y:BA.y};
+function mk(o){o.id=uid++;o.max=o.hp;o.cd=0;o.acc=0;return(units.push(o),o)}
+function mkCreep(team,lane,off){
+  const path=team?LANES[lane].slice().reverse():LANES[lane];
+  mk({type:'creep',team,x:path[0].x+off*(team?-1:1),y:path[0].y,hp:110,dmg:9,range:34,speed:70,rate:1,r:9,path,wp:1,lane});
+}
+function enemyHero(){
+  const lane=Math.floor(Math.random()*3),path=LANES[lane].slice().reverse();
+  mk({type:'hero',ai:true,team:1,x:BB.x,y:BB.y,hp:420+wave*8,dmg:24,range:60,speed:120,rate:.9,r:14,path,wp:1,lane});
+}
+function setup(){
+  mk({type:'base',team:0,x:BA.x,y:BA.y,hp:2500,r:44,dmg:0,range:0});
+  mk({type:'base',team:1,x:BB.x,y:BB.y,hp:2500,r:44,dmg:0,range:0});
+  LANES.forEach((p,l)=>[[0,.22],[0,.38],[1,.78],[1,.62]].forEach(([t,f])=>{
+    const q=pointAt(p,f);mk({type:'tower',team:t,x:q.x,y:q.y,hp:700,dmg:34,range:240,speed:0,rate:1,r:20});}));
+  hero=mk({type:'hero',player:true,team:0,x:BA.x+60,y:BA.y-60,hp:def.hp,dmg:def.dmg,range:def.range,speed:def.speed,rate:def.rate,r:15,lvl:1,skcd:0,dest:null,target:null});
+  enemyHero();
+}
+
+/* ---- Combat ---- */
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function nearest(u,range){let b=null,bd=range;for(const o of units){if(o.team===u.team||o.dead)continue;const d=dist(u,o)-o.r;if(d<bd){bd=d;b=o}}return b}
+function hit(t,a,from){
+  if(t.dead)return;t.hp-=a;
+  if(t.hp>0)return;t.dead=true;
+  if(from&&from.team===0&&(t.type==='creep'||t.type==='hero')){kills++;lvlCheck()}
+  if(t.type==='base')finish(t.team===1);
+  if(t.player){t.respawn=6;}
+  if(t.ai){t.respawn=14;}
+}
+function lvlCheck(){const l=1+Math.floor(kills/4);if(l>hero.lvl){hero.lvl=l;hero.max+=45;hero.hp=Math.min(hero.max,hero.hp+90);hero.dmg+=4}}
+function attack(u,t){
+  if(u.cd>0)return;u.cd=u.rate;
+  if(u.range>60||u.type==='tower')shots.push({a:u,x1:u.x,y1:u.y,x2:t.x,y2:t.y,t:.12});
+  hit(t,u.dmg,u);
+}
+function moveTo(u,x,y,dt){const d=Math.hypot(x-u.x,y-u.y);if(d<2)return true;const s=Math.min(d,u.speed*dt);u.x+=(x-u.x)/d*s;u.y+=(y-u.y)/d*s;return d<=s}
+function step(u,dt){
+  u.cd-=dt;
+  if(u.type==='base')return;
+  if(u.type==='tower'){const t=nearest(u,u.range);if(t)attack(u,t);return}
+  if(u.player){
+    if(u.target&&!u.target.dead){
+      if(dist(u,u.target)-u.target.r>u.range)moveTo(u,u.target.x,u.target.y,dt);else attack(u,u.target);
+    }else{u.target=null;
+      if(u.dest){if(moveTo(u,u.dest.x,u.dest.y,dt))u.dest=null}
+      else{const t=nearest(u,u.range+10);if(t)attack(u,t)}}
+    u.hp=Math.min(u.max,u.hp+dt*2);
+    return;
+  }
+  const t=nearest(u,u.range);
+  if(t){attack(u,t);return}
+  const c=nearest(u,u.type==='hero'?260:190);
+  if(c){moveTo(u,c.x,c.y,dt);return}
+  const w=u.path[u.wp];if(w&&moveTo(u,w.x,w.y,dt)&&u.wp<u.path.length-1)u.wp++;
+}
+function useSkill(){
+  if(!started||over||hero.dead||hero.skcd>0)return;
+  hero.skcd=def.sk.cd;
+  shots.push({ring:true,x:hero.x,y:hero.y,r:def.sk.r,t:.3});
+  for(const o of units)if(o.team===1&&!o.dead&&dist(hero,o)<def.sk.r+o.r)hit(o,def.sk.dmg+hero.lvl*8,hero);
+}
+
+/* ---- Update dengan LOD: unit jauh dari kamera diproses lebih jarang ---- */
+function update(dt){
+  time+=dt;frame++;
+  if(time>=nextWave){wave++;nextWave+=22;for(let l=0;l<3;l++)for(let i=0;i<3;i++){mkCreep(0,l,i*26);mkCreep(1,l,i*26)}}
+  if(hero.skcd>0)hero.skcd-=dt;
+  for(const u of units){
+    if(u.dead){if(u.respawn!==undefined){u.respawn-=dt;if(u.respawn<=0){u.dead=false;u.hp=u.max;u.respawn=undefined;
+      const b=u.team?BB:BA;u.x=b.x;u.y=b.y;if(u.player){u.dest=null;u.target=null}if(u.ai){u.wp=1}}}continue}
+    u.acc+=dt;
+    const far=u.type!=='hero'&&Math.hypot(u.x-cam.x,u.y-cam.y)>1100;
+    if(far&&(frame+u.id)%4)continue;   /* LOD simulasi */
+    step(u,u.acc);u.acc=0;
+  }
+  units=units.filter(u=>!u.dead||u.respawn!==undefined);
+  for(const s of shots)s.t-=dt;shots=shots.filter(s=>s.t>0);
+  cam.x+=(hero.x-cam.x)*Math.min(1,dt*6);cam.y+=(hero.y-cam.y)*Math.min(1,dt*6);
+}
+
+/* ---- Gambar dengan LOD: culling + bentuk sederhana untuk unit jauh ---- */
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#10201f';ctx.fillRect(0,0,vw,vh);
+  const ox=vw/2-cam.x,oy=vh/2-cam.y;
+  ctx.save();ctx.translate(ox,oy);
+  ctx.strokeStyle='#ffffff08';ctx.lineWidth=1;ctx.beginPath();
+  for(let x=Math.max(0,Math.floor((cam.x-vw/2)/200)*200);x<=Math.min(W,cam.x+vw/2);x+=200){ctx.moveTo(x,cam.y-vh/2);ctx.lineTo(x,cam.y+vh/2)}
+  for(let y=Math.max(0,Math.floor((cam.y-vh/2)/200)*200);y<=Math.min(H,cam.y+vh/2);y+=200){ctx.moveTo(cam.x-vw/2,y);ctx.lineTo(cam.x+vw/2,y)}
+  ctx.stroke();
+  ctx.strokeStyle='#2b3d36';ctx.lineWidth=90;ctx.lineJoin='round';
+  for(const p of LANES){ctx.beginPath();p.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));ctx.stroke()}
+  ctx.strokeStyle='#ffffff0d';ctx.lineWidth=2;ctx.strokeRect(0,0,W,H);
+  const L=cam.x-vw/2-60,R=cam.x+vw/2+60,T=cam.y-vh/2-60,B=cam.y+vh/2+60;
+  for(const u of units){
+    if(u.dead||u.x<L||u.x>R||u.y<T||u.y>B)continue;
+    const col=u.team?'#e0566f':'#4fd1b5',d=Math.hypot(u.x-hero.x,u.y-hero.y);
+    if(d>650&&u.type==='creep'){ctx.fillStyle=col;ctx.fillRect(u.x-2,u.y-2,4,4);continue}  /* LOD jauh */
+    ctx.fillStyle=col;ctx.beginPath();
+    if(u.type==='tower'){ctx.rect(u.x-u.r,u.y-u.r,u.r*2,u.r*2)}
+    else if(u.type==='base'){ctx.rect(u.x-u.r,u.y-u.r,u.r*2,u.r*2);ctx.fillStyle=col+'aa'}
+    else ctx.arc(u.x,u.y,u.r,0,6.3);
+    ctx.fill();
+    if(u.player){ctx.strokeStyle='#e6c35c';ctx.lineWidth=3;ctx.stroke()}
+    if(d<650&&u.hp<u.max||u.type!=='creep'){
+      const w=u.r*2+(u.type==='base'?20:6);ctx.fillStyle='#000a';ctx.fillRect(u.x-w/2,u.y-u.r-10,w,5);
+      ctx.fillStyle=col;ctx.fillRect(u.x-w/2,u.y-u.r-10,w*Math.max(0,u.hp/u.max),5)}
+  }
+  for(const s of shots){
+    if(s.ring){ctx.strokeStyle='#e6c35c';ctx.lineWidth=4;ctx.beginPath();ctx.arc(s.x,s.y,s.r*(1-s.t/.3*.5),0,6.3);ctx.stroke();continue}
+    ctx.strokeStyle=s.a.team?'#ff9aa8':'#9af0dc';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(s.x1,s.y1);ctx.lineTo(s.x2,s.y2);ctx.stroke()}
+  if(hero.dest){ctx.strokeStyle='#e6c35c88';ctx.lineWidth=2;ctx.beginPath();ctx.arc(hero.dest.x,hero.dest.y,10,0,6.3);ctx.stroke()}
+  ctx.restore();
+  /* minimap */
+  mc.clearRect(0,0,120,120);const k=120/W;
+  for(const u of units){if(u.dead)continue;mc.fillStyle=u.team?'#e0566f':'#4fd1b5';const s=u.type==='creep'?2:u.type==='hero'?4:5;mc.fillRect(u.x*k-s/2,u.y*k-s/2,s,s)}
+  mc.strokeStyle='#fff6';mc.strokeRect((cam.x-vw/2)*k,(cam.y-vh/2)*k,vw*k,vh*k);
+  /* HUD */
+  $('info').textContent='Level '+hero.lvl+' · Gelombang '+wave+' · Kill '+kills+(hero.dead?' · bangkit '+Math.ceil(hero.respawn)+'d':'');
+  $('hp').firstElementChild.style.width=Math.max(0,hero.hp/hero.max*100)+'%';
+  const q=$('q');q.disabled=hero.skcd>0||hero.dead;q.textContent=hero.skcd>0?Math.ceil(hero.skcd):'Q';
+}
+
+/* ---- Input ---- */
+cv.addEventListener('pointerdown',e=>{
+  if(!started||over||hero.dead)return;
+  const x=e.clientX-vw/2+cam.x,y=e.clientY-vh/2+cam.y;
+  let t=null,bd=34;for(const o of units){if(o.team===0||o.dead)continue;const d=Math.hypot(o.x-x,o.y-y)-o.r;if(d<bd){bd=d;t=o}}
+  hero.target=t;hero.dest=t?null:{x:Math.max(0,Math.min(W,x)),y:Math.max(0,Math.min(H,y))};
+});
+$('q').addEventListener('click',useSkill);
+addEventListener('keydown',e=>{if(e.key==='q'||e.key==='Q')useSkill()});
+HEROES.forEach(h=>{const b=document.createElement('button');b.className='h';b.innerHTML='<b>'+h.n+'</b><span>'+h.d+'</span>';
+  b.onclick=()=>{def=h;setup();started=true;$('start').classList.add('hide')};$('picks').appendChild(b)});
+function finish(win){over=true;$('endt').textContent=win?'Menang! Markas Gelap runtuh':'Kalah. Markasmu runtuh';$('end').classList.remove('hide')}
+
+let last=performance.now();
+function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;if(started&&!over)update(dt);if(started)draw();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
