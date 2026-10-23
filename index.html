@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Gaameai – Tiga Jalur</title>
 <style>
-:root{--bg:#10201f;--lane:#2b3d36;--a:#4fd1b5;--b:#e0566f;--ink:#e8efe6;--gold:#e6c35c}
+:root{--bg:#10201f;--lane:#2b3d36;--a:#4fd1b5;--b:#e0566f;--ink:#e8efe6;--gold:#e6c35c;--ult:#ff9a4f}
 *{box-sizing:border-box;margin:0}
 html,body{height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,sans-serif;overflow:hidden;touch-action:none}
 canvas#c{position:fixed;inset:0;width:100%;height:100%}
@@ -13,16 +13,27 @@ canvas#c{position:fixed;inset:0;width:100%;height:100%}
 #hud{position:fixed;left:10px;top:10px;font-size:14px;line-height:1.5;text-shadow:0 1px 2px #000}
 #hp{width:160px;height:8px;background:#0008;border-radius:4px;overflow:hidden;margin-top:4px}
 #hp i{display:block;height:100%;width:100%;background:var(--a)}
-#q{position:fixed;left:14px;bottom:14px;width:76px;height:76px;border-radius:50%;border:3px solid var(--gold);background:#10201fdd;color:var(--gold);font-size:22px;font-weight:700}
-#q:disabled{opacity:.4}
-.ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#0b1514ee;text-align:center;padding:20px}
+#sk{position:fixed;left:10px;bottom:14px;display:flex;gap:8px}
+#sk button{width:62px;height:62px;border-radius:50%;border:3px solid var(--gold);background:#10201fdd;color:var(--gold);font:700 20px system-ui,sans-serif;padding:0;cursor:pointer;overflow:hidden}
+#sk button.ult{border-color:var(--ult);color:var(--ult)}
+#sk button small{display:block;font-size:9px;font-weight:400;line-height:1.1;margin-top:2px;color:var(--ink);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 3px}
+#sk button:disabled{opacity:.4}
+#shopb{position:fixed;right:10px;top:10px;background:#10201fdd;color:var(--gold);border:2px solid var(--gold);border-radius:10px;padding:8px 14px;font:600 14px system-ui,sans-serif;cursor:pointer}
+.ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:12px;background:#0b1514ee;text-align:center;padding:20px;overflow-y:auto;touch-action:pan-y}
+.ov>:first-child{margin-top:auto}
+.ov>:last-child{margin-bottom:auto}
 .ov h1{font-size:clamp(28px,6vw,48px);letter-spacing:.02em}
-.ov p{max-width:42ch;opacity:.8}
+.ov p{max-width:46ch;opacity:.8}
 .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;width:min(760px,100%)}
 button.h{background:#1b302d;color:var(--ink);border:2px solid var(--a);border-radius:10px;padding:12px 14px;min-width:150px;font:inherit;cursor:pointer}
+.grid button.h{min-width:0;width:100%}
 button.h:hover,button.h:focus-visible{background:#24413c;outline:none}
-button.h b{display:block;font-size:17px}
+button.h b{display:block;font-size:16px}
 button.h span{font-size:12px;opacity:.75}
+button.h.ult{border-color:var(--ult)}
+button.h.sel{border-color:var(--gold);background:#3a3a1f}
+button.h:disabled{opacity:.4;cursor:default}
 .hide{display:none}
 </style>
 </head>
@@ -30,12 +41,26 @@ button.h span{font-size:12px;opacity:.75}
 <canvas id="c"></canvas>
 <canvas id="mini" width="120" height="120"></canvas>
 <div id="hud"><div id="info"></div><div id="hp"><i></i></div></div>
-<button id="q" disabled>Q</button>
+<div id="sk"></div>
+<button id="shopb">Toko</button>
 
 <div class="ov" id="start">
   <h1>Tiga Jalur</h1>
-  <p>Ketuk tanah untuk berjalan, ketuk musuh untuk menyerang, tombol Q untuk jurus area. Hancurkan markas merah.</p>
+  <p>Pilih hero dasar, lalu susun sendiri skill-mu (gaya Legends of Dota). Ketuk tanah untuk berjalan, ketuk musuh untuk menyerang, tombol Q W E R untuk skill. Hancurkan markas merah.</p>
   <div class="row" id="picks"></div>
+</div>
+<div class="ov hide" id="draft">
+  <h1>Susun Skill-mu</h1>
+  <p>Pilih 3 skill biasa dan 1 ultimate. Urutan pilihan menentukan tombol Q, W, E; ultimate di R.</p>
+  <div id="dcount"></div>
+  <div class="grid" id="pool"></div>
+  <div class="row"><button class="h" id="rand"><b>Acak</b></button><button class="h" id="go" disabled><b>Mulai</b></button></div>
+</div>
+<div class="ov hide" id="shop">
+  <h1>Toko</h1>
+  <div id="shopgold"></div>
+  <div class="grid" id="items"></div>
+  <button class="h" id="shopx"><b>Tutup</b></button>
 </div>
 <div class="ov hide" id="end"><h1 id="endt"></h1><button class="h" onclick="location.reload()"><b>Main lagi</b></button></div>
 
@@ -56,14 +81,37 @@ const LANES=[
 function pathLen(p){let s=0;for(let i=1;i<p.length;i++)s+=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y);return s}
 function pointAt(p,f){let t=f*pathLen(p);for(let i=1;i<p.length;i++){const l=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y);if(t<=l){const k=t/l;return{x:p[i-1].x+(p[i].x-p[i-1].x)*k,y:p[i-1].y+(p[i].y-p[i-1].y)*k}}t-=l}return p[p.length-1]}
 
-/* ---- Hero ---- */
+/* ---- Hero dasar (statistik awal) ---- */
 const HEROES=[
- {n:'Penjaga',d:'Jarak dekat, tebal',hp:520,dmg:34,range:50,speed:165,rate:.8,sk:{r:150,dmg:90,cd:7}},
- {n:'Pemanah',d:'Jarak jauh, cepat',hp:340,dmg:30,range:280,speed:185,rate:.65,sk:{r:120,dmg:70,cd:6}},
- {n:'Penyihir',d:'Jurus area besar',hp:300,dmg:26,range:230,speed:170,rate:.9,sk:{r:230,dmg:130,cd:9}}];
+ {n:'Penjaga',d:'Jarak dekat, tebal',hp:520,dmg:34,range:50,speed:165,rate:.8},
+ {n:'Pemanah',d:'Jarak jauh, cepat',hp:340,dmg:30,range:280,speed:185,rate:.65},
+ {n:'Penyihir',d:'Jarak sedang, tipis',hp:300,dmg:26,range:230,speed:170,rate:.9}];
+
+/* ---- Kolam skill (draft ala Legends of Dota): 8 biasa + 4 ultimate ---- */
+const SKILLS=[
+ {n:'Tebasan Putar',d:'Serangan area di sekitarmu',type:'burst',r:130,dmg:70,cd:6,c:'#e6c35c'},
+ {n:'Panah Kilat',d:'Tembak musuh terdekat dari jauh',type:'bolt',r:360,dmg:85,cd:5,c:'#e6c35c'},
+ {n:'Hentak Bumi',d:'Area kecil, musuh pingsan 1,4 dtk',type:'stun',r:120,dmg:40,dur:1.4,cd:10,c:'#ffffff'},
+ {n:'Kabut Lambat',d:'Area, musuh melambat 3 dtk',type:'slow',r:200,dmg:30,dur:3,cd:8,c:'#8ab4ff'},
+ {n:'Terjang',d:'Melesat maju, melukai musuh di jalur',type:'dash',dist:240,dmg:60,cd:7,c:'#e6c35c'},
+ {n:'Pemulihan',d:'Pulihkan nyawa sendiri',type:'heal',heal:120,cd:12,c:'#7dff9a'},
+ {n:'Hisap Nyawa',d:'Curi nyawa musuh terdekat',type:'drain',r:220,dmg:70,cd:8,c:'#e0566f'},
+ {n:'Perisai Batu',d:'Damage diterima -50% selama 5 dtk',type:'buff',dur:5,dm:1,rm:1,ar:.5,cd:14,c:'#8ab4ff'},
+ {n:'Meteor',d:'Ledakan area sangat besar',type:'burst',r:280,dmg:200,cd:28,ult:1,c:'#ff9a4f'},
+ {n:'Amuk',d:'9 dtk: damage x1,6 dan serang lebih cepat',type:'buff',dur:9,dm:1.6,rm:1.5,ar:.8,cd:30,ult:1,c:'#ff9a4f'},
+ {n:'Gempa Agung',d:'Area besar, musuh pingsan 2,2 dtk',type:'stun',r:260,dmg:110,dur:2.2,cd:32,ult:1,c:'#ff9a4f'},
+ {n:'Penghukum',d:'Pukulan besar, makin sakit bila musuh terluka',type:'execute',r:420,dmg:80,pct:.45,cd:24,ult:1,c:'#ff9a4f'}];
+
+/* ---- Item toko ---- */
+const ITEMS=[
+ {n:'Pedang Tajam',d:'+12 damage',p:120,f:h=>{h.dmg+=12}},
+ {n:'Zirah Kulit',d:'+120 nyawa',p:120,f:h=>{h.max+=120;h.hp+=120}},
+ {n:'Sepatu Angin',d:'+18 kecepatan',p:100,f:h=>{h.speed+=18}},
+ {n:'Jimat Waktu',d:'-10% cooldown (maks 50%)',p:150,f:h=>{h.cdr=Math.min(.5,h.cdr+.1)}},
+ {n:'Cincin Pulih',d:'+3 regenerasi nyawa/dtk',p:100,f:h=>{h.regen+=3}}];
 
 /* ---- State ---- */
-let units=[],shots=[],frame=0,time=0,wave=0,nextWave=3,over=false,started=false,hero,def,kills=0,uid=0;
+let units=[],shots=[],frame=0,time=0,wave=0,nextWave=3,over=false,started=false,paused=false,hero,def,chosen=[],kills=0,uid=0;
 const cam={x:BA.x,y:BA.y};
 function mk(o){o.id=uid++;o.max=o.hp;o.cd=0;o.acc=0;return(units.push(o),o)}
 function mkCreep(team,lane,off){
@@ -72,38 +120,50 @@ function mkCreep(team,lane,off){
 }
 function enemyHero(){
   const lane=Math.floor(Math.random()*3),path=LANES[lane].slice().reverse();
-  mk({type:'hero',ai:true,team:1,x:BB.x,y:BB.y,hp:420+wave*8,dmg:24,range:60,speed:120,rate:.9,r:14,path,wp:1,lane});
+  const u=mk({type:'hero',ai:true,team:1,x:BB.x,y:BB.y,hp:420+wave*8,dmg:24,range:60,speed:120,rate:.9,r:14,path,wp:1,lane});
+  /* musuh membawa 2 skill acak (hanya yang tidak perlu dibidik) */
+  const pool=SKILLS.filter(s=>!s.ult&&['burst','bolt','stun','slow','drain'].includes(s.type)).sort(()=>Math.random()-.5);
+  u.sk2=pool.slice(0,2).map(d=>({d,cl:d.cd*.5}));
 }
 function setup(){
   mk({type:'base',team:0,x:BA.x,y:BA.y,hp:2500,r:44,dmg:0,range:0});
   mk({type:'base',team:1,x:BB.x,y:BB.y,hp:2500,r:44,dmg:0,range:0});
   LANES.forEach((p,l)=>[[0,.22],[0,.38],[1,.78],[1,.62]].forEach(([t,f])=>{
     const q=pointAt(p,f);mk({type:'tower',team:t,x:q.x,y:q.y,hp:700,dmg:34,range:240,speed:0,rate:1,r:20});}));
-  hero=mk({type:'hero',player:true,team:0,x:BA.x+60,y:BA.y-60,hp:def.hp,dmg:def.dmg,range:def.range,speed:def.speed,rate:def.rate,r:15,lvl:1,skcd:0,dest:null,target:null});
+  hero=mk({type:'hero',player:true,team:0,x:BA.x+60,y:BA.y-60,hp:def.hp,dmg:def.dmg,range:def.range,speed:def.speed,rate:def.rate,r:15,lvl:1,
+    skills:chosen,cds:[0,0,0,0],cdr:0,regen:2,gold:60,dest:null,target:null});
   enemyHero();
+  buildBar();
 }
 
-/* ---- Combat ---- */
+/* ---- Pertarungan ---- */
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 function nearest(u,range){let b=null,bd=range;for(const o of units){if(o.team===u.team||o.dead)continue;const d=dist(u,o)-o.r;if(d<bd){bd=d;b=o}}return b}
 function hit(t,a,from){
-  if(t.dead)return;t.hp-=a;
+  if(t.dead)return;
+  if(t.bt>0)a*=t.ar;
+  t.hp-=a;
   if(t.hp>0)return;t.dead=true;
   if(from&&from.team===0&&(t.type==='creep'||t.type==='hero')){kills++;lvlCheck()}
+  if(from===hero){hero.gold+=t.type==='creep'?18:t.type==='hero'?90:t.type==='tower'?60:0}
   if(t.type==='base')finish(t.team===1);
   if(t.player){t.respawn=6;}
   if(t.ai){t.respawn=14;}
 }
 function lvlCheck(){const l=1+Math.floor(kills/4);if(l>hero.lvl){hero.lvl=l;hero.max+=45;hero.hp=Math.min(hero.max,hero.hp+90);hero.dmg+=4}}
 function attack(u,t){
-  if(u.cd>0)return;u.cd=u.rate;
+  if(u.cd>0)return;
+  const b=u.bt>0;u.cd=u.rate/(b?u.rm:1);
   if(u.range>60||u.type==='tower')shots.push({a:u,x1:u.x,y1:u.y,x2:t.x,y2:t.y,t:.12});
-  hit(t,u.dmg,u);
+  hit(t,u.dmg*(b?u.dm:1),u);
 }
-function moveTo(u,x,y,dt){const d=Math.hypot(x-u.x,y-u.y);if(d<2)return true;const s=Math.min(d,u.speed*dt);u.x+=(x-u.x)/d*s;u.y+=(y-u.y)/d*s;return d<=s}
+function moveTo(u,x,y,dt){const d=Math.hypot(x-u.x,y-u.y);if(d<2)return true;const s=Math.min(d,u.speed*(u.slow>0?.55:1)*dt);u.x+=(x-u.x)/d*s;u.y+=(y-u.y)/d*s;return d<=s}
 function step(u,dt){
   u.cd-=dt;
   if(u.type==='base')return;
+  if(u.slow>0)u.slow-=dt;
+  if(u.bt>0)u.bt-=dt;
+  if(u.stun>0){u.stun-=dt;return}
   if(u.type==='tower'){const t=nearest(u,u.range);if(t)attack(u,t);return}
   if(u.player){
     if(u.target&&!u.target.dead){
@@ -111,8 +171,13 @@ function step(u,dt){
     }else{u.target=null;
       if(u.dest){if(moveTo(u,u.dest.x,u.dest.y,dt))u.dest=null}
       else{const t=nearest(u,u.range+10);if(t)attack(u,t)}}
-    u.hp=Math.min(u.max,u.hp+dt*2);
+    u.hp=Math.min(u.max,u.hp+dt*u.regen);
     return;
+  }
+  if(u.sk2){
+    for(const s of u.sk2){s.cl-=dt;
+      if(s.cl<=0){const t=nearest(u,Math.min(s.d.r,300));
+        if(t&&cast(u,s.d,1+Math.floor(wave/3)))s.cl=s.d.cd*1.3}}
   }
   const t=nearest(u,u.range);
   if(t){attack(u,t);return}
@@ -120,18 +185,54 @@ function step(u,dt){
   if(c){moveTo(u,c.x,c.y,dt);return}
   const w=u.path[u.wp];if(w&&moveTo(u,w.x,w.y,dt)&&u.wp<u.path.length-1)u.wp++;
 }
-function useSkill(){
-  if(!started||over||hero.dead||hero.skcd>0)return;
-  hero.skcd=def.sk.cd;
-  shots.push({ring:true,x:hero.x,y:hero.y,r:def.sk.r,t:.3});
-  for(const o of units)if(o.team===1&&!o.dead&&dist(hero,o)<def.sk.r+o.r)hit(o,def.sk.dmg+hero.lvl*8,hero);
+
+/* ---- Skill: satu fungsi untuk pemain dan musuh. Mengembalikan false bila tidak ada sasaran ---- */
+function cast(u,s,lv){
+  const dmg=(s.dmg||0)+lv*8;
+  const area=(extra)=>{
+    shots.push({ring:true,x:u.x,y:u.y,r:s.r,t:.3,d:.3,c:s.c});
+    for(const o of units)if(o.team!==u.team&&!o.dead&&dist(u,o)<s.r+o.r){hit(o,dmg,u);if(extra)extra(o)}
+  };
+  switch(s.type){
+    case'burst':area();break;
+    case'stun':area(o=>{o.stun=s.dur});break;
+    case'slow':area(o=>{o.slow=s.dur});break;
+    case'bolt':{const t=nearest(u,s.r);if(!t)return false;
+      shots.push({a:u,x1:u.x,y1:u.y,x2:t.x,y2:t.y,t:.15});hit(t,dmg,u);break}
+    case'drain':{const t=nearest(u,s.r);if(!t)return false;
+      shots.push({a:u,x1:u.x,y1:u.y,x2:t.x,y2:t.y,t:.15});hit(t,dmg,u);u.hp=Math.min(u.max,u.hp+dmg*.6);break}
+    case'execute':{const t=nearest(u,s.r);if(!t)return false;
+      shots.push({a:u,x1:u.x,y1:u.y,x2:t.x,y2:t.y,t:.2});hit(t,dmg+(t.max-t.hp)*s.pct,u);break}
+    case'heal':u.hp=Math.min(u.max,u.hp+s.heal+lv*12);
+      shots.push({ring:true,x:u.x,y:u.y,r:40,t:.4,d:.4,c:s.c});break;
+    case'buff':u.bt=s.dur;u.dm=s.dm;u.rm=s.rm;u.ar=s.ar;
+      shots.push({ring:true,x:u.x,y:u.y,r:50,t:.4,d:.4,c:s.c});break;
+    case'dash':{
+      let tx,ty;
+      if(u.target&&!u.target.dead){tx=u.target.x;ty=u.target.y}
+      else if(u.dest){tx=u.dest.x;ty=u.dest.y}
+      else{const t=nearest(u,420);if(t){tx=t.x;ty=t.y}else{tx=BB.x;ty=BB.y}}
+      const d=Math.hypot(tx-u.x,ty-u.y)||1,L=Math.min(s.dist,Math.max(d-20,30)),ux=(tx-u.x)/d,uy=(ty-u.y)/d;
+      const x0=u.x,y0=u.y,x1=Math.max(0,Math.min(W,x0+ux*L)),y1=Math.max(0,Math.min(H,y0+uy*L)),seen=new Set();
+      for(let i=0;i<=5;i++){const px=x0+(x1-x0)*i/5,py=y0+(y1-y0)*i/5;
+        for(const o of units)if(o.team!==u.team&&!o.dead&&!seen.has(o.id)&&Math.hypot(o.x-px,o.y-py)<40+o.r){seen.add(o.id);hit(o,dmg,u)}}
+      u.x=x1;u.y=y1;
+      shots.push({a:u,x1:x0,y1:y0,x2:x1,y2:y1,t:.2});break}
+  }
+  return true;
+}
+function useSkill(i){
+  if(!started||over||paused||hero.dead||hero.cds[i]>0)return;
+  const s=hero.skills[i];
+  if(s&&cast(hero,s,hero.lvl))hero.cds[i]=s.cd*(1-hero.cdr);
 }
 
 /* ---- Update dengan LOD: unit jauh dari kamera diproses lebih jarang ---- */
 function update(dt){
   time+=dt;frame++;
   if(time>=nextWave){wave++;nextWave+=22;for(let l=0;l<3;l++)for(let i=0;i<3;i++){mkCreep(0,l,i*26);mkCreep(1,l,i*26)}}
-  if(hero.skcd>0)hero.skcd-=dt;
+  for(let i=0;i<4;i++)if(hero.cds[i]>0)hero.cds[i]-=dt;
+  hero.gold+=dt*2.5;
   for(const u of units){
     if(u.dead){if(u.respawn!==undefined){u.respawn-=dt;if(u.respawn<=0){u.dead=false;u.hp=u.max;u.respawn=undefined;
       const b=u.team?BB:BA;u.x=b.x;u.y=b.y;if(u.player){u.dest=null;u.target=null}if(u.ai){u.wp=1}}}continue}
@@ -168,13 +269,16 @@ function draw(){
     else if(u.type==='base'){ctx.rect(u.x-u.r,u.y-u.r,u.r*2,u.r*2);ctx.fillStyle=col+'aa'}
     else ctx.arc(u.x,u.y,u.r,0,6.3);
     ctx.fill();
+    if(u.stun>0){ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke()}
+    else if(u.slow>0){ctx.strokeStyle='#8ab4ff';ctx.lineWidth=3;ctx.stroke()}
+    else if(u.bt>0){ctx.strokeStyle='#ff9a4f';ctx.lineWidth=3;ctx.stroke()}
     if(u.player){ctx.strokeStyle='#e6c35c';ctx.lineWidth=3;ctx.stroke()}
     if(d<650&&u.hp<u.max||u.type!=='creep'){
       const w=u.r*2+(u.type==='base'?20:6);ctx.fillStyle='#000a';ctx.fillRect(u.x-w/2,u.y-u.r-10,w,5);
       ctx.fillStyle=col;ctx.fillRect(u.x-w/2,u.y-u.r-10,w*Math.max(0,u.hp/u.max),5)}
   }
   for(const s of shots){
-    if(s.ring){ctx.strokeStyle='#e6c35c';ctx.lineWidth=4;ctx.beginPath();ctx.arc(s.x,s.y,s.r*(1-s.t/.3*.5),0,6.3);ctx.stroke();continue}
+    if(s.ring){ctx.strokeStyle=s.c;ctx.lineWidth=4;ctx.beginPath();ctx.arc(s.x,s.y,s.r*(1-s.t/s.d*.5),0,6.3);ctx.stroke();continue}
     ctx.strokeStyle=s.a.team?'#ff9aa8':'#9af0dc';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(s.x1,s.y1);ctx.lineTo(s.x2,s.y2);ctx.stroke()}
   if(hero.dest){ctx.strokeStyle='#e6c35c88';ctx.lineWidth=2;ctx.beginPath();ctx.arc(hero.dest.x,hero.dest.y,10,0,6.3);ctx.stroke()}
   ctx.restore();
@@ -183,26 +287,68 @@ function draw(){
   for(const u of units){if(u.dead)continue;mc.fillStyle=u.team?'#e0566f':'#4fd1b5';const s=u.type==='creep'?2:u.type==='hero'?4:5;mc.fillRect(u.x*k-s/2,u.y*k-s/2,s,s)}
   mc.strokeStyle='#fff6';mc.strokeRect((cam.x-vw/2)*k,(cam.y-vh/2)*k,vw*k,vh*k);
   /* HUD */
-  $('info').textContent='Level '+hero.lvl+' · Gelombang '+wave+' · Kill '+kills+(hero.dead?' · bangkit '+Math.ceil(hero.respawn)+'d':'');
+  $('info').textContent='Level '+hero.lvl+' · Gelombang '+wave+' · Kill '+kills+' · Emas '+Math.floor(hero.gold)+(hero.dead?' · bangkit '+Math.ceil(hero.respawn)+'d':'');
   $('hp').firstElementChild.style.width=Math.max(0,hero.hp/hero.max*100)+'%';
-  const q=$('q');q.disabled=hero.skcd>0||hero.dead;q.textContent=hero.skcd>0?Math.ceil(hero.skcd):'Q';
+  const bar=$('sk').children;
+  for(let i=0;i<bar.length;i++){const b=bar[i],cd=hero.cds[i];b.disabled=cd>0||hero.dead;b.firstChild.textContent=cd>0?Math.ceil(cd):'QWER'[i]}
 }
 
 /* ---- Input ---- */
 cv.addEventListener('pointerdown',e=>{
-  if(!started||over||hero.dead)return;
+  if(!started||over||paused||hero.dead)return;
   const x=e.clientX-vw/2+cam.x,y=e.clientY-vh/2+cam.y;
   let t=null,bd=34;for(const o of units){if(o.team===0||o.dead)continue;const d=Math.hypot(o.x-x,o.y-y)-o.r;if(d<bd){bd=d;t=o}}
   hero.target=t;hero.dest=t?null:{x:Math.max(0,Math.min(W,x)),y:Math.max(0,Math.min(H,y))};
 });
-$('q').addEventListener('click',useSkill);
-addEventListener('keydown',e=>{if(e.key==='q'||e.key==='Q')useSkill()});
+addEventListener('keydown',e=>{const i='qwer'.indexOf(e.key.toLowerCase());if(e.key.length===1&&i>=0)useSkill(i)});
+function buildBar(){
+  const bar=$('sk');bar.innerHTML='';
+  hero.skills.forEach((s,i)=>{const b=document.createElement('button');if(s.ult)b.className='ult';
+    b.innerHTML='<span>'+'QWER'[i]+'</span><small>'+s.n+'</small>';b.onclick=()=>useSkill(i);bar.appendChild(b)});
+}
+
+/* ---- Pilih hero -> draft skill ---- */
 HEROES.forEach(h=>{const b=document.createElement('button');b.className='h';b.innerHTML='<b>'+h.n+'</b><span>'+h.d+'</span>';
-  b.onclick=()=>{def=h;setup();started=true;$('start').classList.add('hide')};$('picks').appendChild(b)});
+  b.onclick=()=>{def=h;$('start').classList.add('hide');$('draft').classList.remove('hide')};$('picks').appendChild(b)});
+let pick=[];const sbtn=new Map();
+function counts(){const u=pick.filter(s=>s.ult).length;return[pick.length-u,u]}
+function refreshDraft(){
+  for(const[s,b]of sbtn)b.classList.toggle('sel',pick.includes(s));
+  const[n,u]=counts();
+  $('dcount').textContent='Biasa '+n+'/3 · Ultimate '+u+'/1';
+  $('go').disabled=!(n===3&&u===1);
+}
+SKILLS.forEach(s=>{const b=document.createElement('button');b.className='h'+(s.ult?' ult':'');
+  b.innerHTML='<b>'+s.n+'</b><span>'+(s.ult?'ULTIMATE · ':'')+s.d+' · cd '+s.cd+'d</span>';
+  b.onclick=()=>{const i=pick.indexOf(s);
+    if(i>=0)pick.splice(i,1);
+    else{const[n,u]=counts();if(s.ult?u>=1:n>=3)return;pick.push(s)}
+    refreshDraft()};
+  sbtn.set(s,b);$('pool').appendChild(b)});
+$('rand').onclick=()=>{
+  const sh=a=>a.slice().sort(()=>Math.random()-.5);
+  pick=[...sh(SKILLS.filter(s=>!s.ult)).slice(0,3),sh(SKILLS.filter(s=>s.ult))[0]];refreshDraft()};
+$('go').onclick=()=>{
+  chosen=[...pick.filter(s=>!s.ult),...pick.filter(s=>s.ult)];
+  setup();started=true;$('draft').classList.add('hide')};
+refreshDraft();
+
+/* ---- Toko ---- */
+function renderShop(){
+  const l=$('items');l.innerHTML='';
+  ITEMS.forEach(it=>{const k=it.k||0,p=Math.round(it.p*(1+.25*k));
+    const b=document.createElement('button');b.className='h';b.disabled=hero.gold<p;
+    b.innerHTML='<b>'+it.n+(k?' ×'+k:'')+'</b><span>'+it.d+' · '+p+' emas</span>';
+    b.onclick=()=>{if(hero.gold<p)return;hero.gold-=p;it.k=k+1;it.f(hero);renderShop()};l.appendChild(b)});
+  $('shopgold').textContent='Emas: '+Math.floor(hero.gold);
+}
+$('shopb').onclick=()=>{if(!started||over)return;paused=true;renderShop();$('shop').classList.remove('hide')};
+$('shopx').onclick=()=>{paused=false;$('shop').classList.add('hide')};
+
 function finish(win){over=true;$('endt').textContent=win?'Menang! Markas Gelap runtuh':'Kalah. Markasmu runtuh';$('end').classList.remove('hide')}
 
 let last=performance.now();
-function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;if(started&&!over)update(dt);if(started)draw();requestAnimationFrame(loop)}
+function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;if(started&&!over&&!paused)update(dt);if(started)draw();requestAnimationFrame(loop)}
 requestAnimationFrame(loop);
 </script>
 </body>
