@@ -5,10 +5,10 @@ Game MOBA 2D ringan (HTML5 canvas, satu file, tanpa library). Aset dan kode oris
 ## Cara main
 
 1. Pilih peta dan hero dasar (Penjaga, Pemanah, Penyihir).
-2. **Draft skill ala Legends of Dota**: pilih 3 skill biasa + 1 ultimate dari 12 skill (atau tekan *Acak*). Urutan pilihan menentukan tombol Q, W, E; ultimate di R.
+2. **Draft skill ala Legends of Dota**: pilih 3 skill biasa + 1 ultimate dari 32 skill (atau tekan *Acak*). Filter Serangan, Kontrol, dan Dukungan membantu mencari. Urutan pilihan menentukan tombol Q, W, E; ultimate di R.
 3. Ketuk tanah untuk berjalan, ketuk musuh untuk menyerang. Skill dipakai dengan tombol di layar atau keyboard Q W E R (tanpa membidik, cocok untuk HP).
 4. Kumpulkan emas dari kill dan waktu, belanja di **Toko** (pedang, zirah, sepatu, jimat cooldown, cincin pemulih). Game berhenti sementara saat toko terbuka.
-5. Hancurkan markas merah. Musuh juga membawa skill acak.
+5. Hancurkan markas merah. **Markas kebal sampai seluruh menara di satu jalur runtuh**, jadi menyerbu langsung tidak berhasil. Hero AI juga bermain di kedua tim (rekan setim dan lawan), dan membawa skill acak.
 6. Kamp hutan (bulatan cokelat) memberi emas dan level; kamp hidup lagi setelah 45 detik. Kamp besar memberi lebih banyak.
 
 ## Peta
@@ -23,10 +23,13 @@ Menambah peta baru cukup menambah satu objek di array `MAPS` di `index.html`: uk
 
 ## Skill
 
-Biasa: Tebasan Putar, Panah Kilat, Hentak Bumi (stun), Kabut Lambat (slow), Terjang (dash), Pemulihan, Hisap Nyawa, Perisai Batu.
-Ultimate: Meteor, Amuk, Gempa Agung, Penghukum.
+32 skill (24 biasa + 8 ultimate), semuanya orisinal, dibagi tiga jenis:
 
-Menambah skill baru cukup menambah satu baris di array `SKILLS` di `index.html`. Tipe yang tersedia: `burst`, `bolt`, `stun`, `slow`, `dash`, `heal`, `drain`, `buff`, `execute`.
+- **Serangan (11):** Tebasan Putar, Tebasan Lebar, Panah Kilat, Tembakan Berat, Tombak Rantai, Terjang, Hisap Nyawa, Hisap Besar; ultimate Meteor, Amuk, Penghukum.
+- **Kontrol (7):** Hentak Bumi, Pukulan Lumpuh, Kabut Lambat, Segel Bisu (musuh tak bisa pakai skill), Tanda Pemburu (musuh menerima damage lebih), Racun Kabut; ultimate Gempa Agung.
+- **Dukungan (14):** membantu sekutu di sekitarmu (hero dan prajurit, termasuk dirimu). Pemulihan, Perisai Batu, Berkah Pemulih, Panji Penyembuh (menyembuhkan sekutu paling terluka), Mata Air (pulih terus), Semangat Tempur (damage dan kecepatan serang), Langkah Angin (lari lebih cepat), Tameng Bersama (perisai), Restu Baja (damage diterima berkurang), Lompatan Bayangan (berpindah cepat); ultimate Hujan Berkat, Bendera Perang, Kubah Pelindung (sekutu kebal 3 detik), Panggil Pasukan (4 prajurit sekutu).
+
+Menambah skill baru cukup menambah satu baris di array `SKILLS` di `index.html`. Tipe efek yang tersedia: `burst`, `bolt`, `chain`, `stun`, `slow`, `sil`, `amp`, `dot`, `dash`, `blink`, `drain`, `execute`, `heal`, `buff`, `ally` (efek untuk semua sekutu dalam radius, diatur lewat `ef`: `heal`, `dm`, `rm`, `ar`, `sm`, `sh`, `rg`, `inv`, `dur`), `healLow`, `summon`.
 
 ## Grafik (pixel art)
 
